@@ -33,7 +33,11 @@ requires_sandbox_runtime = pytest.mark.skipif(
 )
 requires_all_tools_deps = pytest.mark.skipif(
     not os.environ.get("OPENAI_API_KEY") or shutil.which("srt") is None,
-    reason="AllTools requires OPENAI_API_KEY and sandbox-runtime (srt)",
+    reason="alltools requires OPENAI_API_KEY and sandbox-runtime (srt)",
+)
+requires_all_tools_qwen_deps = pytest.mark.skipif(
+    not os.environ.get("OPENROUTER_API_KEY") or shutil.which("srt") is None,
+    reason="alltools_qwen requires OPENROUTER_API_KEY and sandbox-runtime (srt)",
 )
 
 DOCUMENTS: List[Dict[str, Any]] = [
@@ -125,9 +129,14 @@ _ALL_VARIANTS = [
     ("openai_embeddings_grep", {"KB_search", "grep"}, "openai"),
     ("openai_embeddings_reranker_grep", {"KB_search", "grep"}, "openai"),
     (
-        "AllTools",
+        "alltools",
         {"KB_search_bm25", "KB_search_dense", "shell"},
         "all_tools",
+    ),
+    (
+        "alltools_qwen",
+        {"KB_search_bm25", "KB_search_dense", "shell"},
+        "all_tools_qwen",
     ),
 ]
 
@@ -141,6 +150,8 @@ def _api_mark(gate):
         return requires_sandbox_runtime
     if gate == "all_tools":
         return requires_all_tools_deps
+    if gate == "all_tools_qwen":
+        return requires_all_tools_qwen_deps
     return pytest.mark.skipif(False, reason="")
 
 
@@ -504,7 +515,8 @@ class TestPolicyTemplateIntegrity:
             "qwen_embeddings_grep",
             "openai_embeddings",
             "openai_embeddings_grep",
-            "AllTools",
+            "alltools",
+            "alltools_qwen",
         ],
     )
     def test_policy_renders_nonempty(self, variant_name, knowledge_base):
@@ -514,10 +526,7 @@ class TestPolicyTemplateIntegrity:
         )
 
         variant = resolve_variant(variant_name)
-        extra = {}
-        if variant_name == "AllTools":
-            extra = {"dense_embedding_type": "openai_api"}
-        policy = build_policy(variant, knowledge_base, **extra)
+        policy = build_policy(variant, knowledge_base)
         assert len(policy) > 100
 
     def test_full_kb_policy_contains_all_documents(self, knowledge_base):
@@ -649,15 +658,11 @@ class TestRequiredDocumentRetrievability:
 class TestGetEnvironmentLivePath:
     """Test the exact function the live path calls: get_environment()."""
 
+    @requires_all_tools_deps
     def test_default_variant_produces_valid_environment(self):
-        import warnings
-
         from tau2.domains.banking_knowledge.environment import get_environment
 
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            env = get_environment()
-            assert any("--retrieval-config" in str(m.message) for m in w)
+        env = get_environment()
         assert env.policy and len(env.policy) > 100
         assert env.tools is not None
         assert env.user_tools is not None
@@ -1041,7 +1046,7 @@ class TestEncoderCacheConfigIncludesInstruction:
 
         config = EmbeddingEncoder(
             embedder_type="openrouter",
-            embedder_params={"model": "qwen3-embedding-8b"},
+            embedder_params={"model": "qwen3-embedding-8b", "api_key": "test"},
         )._get_cache_config()
         assert "_query_instruction" in config
         assert "retrieve" in config["_query_instruction"].lower()
@@ -1053,7 +1058,7 @@ class TestEncoderCacheConfigIncludesInstruction:
 
         config = EmbeddingEncoder(
             embedder_type="openai",
-            embedder_params={"model": "text-embedding-3-large"},
+            embedder_params={"model": "text-embedding-3-large", "api_key": "test"},
         )._get_cache_config()
         assert "_query_instruction" not in config
 
@@ -1067,6 +1072,7 @@ class TestEncoderCacheConfigIncludesInstruction:
             embedder_params={
                 "model": "qwen3-embedding-8b",
                 "query_instruction": "A",
+                "api_key": "test",
             },
         )._get_cache_config()
         config_b = EmbeddingEncoder(
@@ -1074,6 +1080,7 @@ class TestEncoderCacheConfigIncludesInstruction:
             embedder_params={
                 "model": "qwen3-embedding-8b",
                 "query_instruction": "B",
+                "api_key": "test",
             },
         )._get_cache_config()
         assert config_a != config_b

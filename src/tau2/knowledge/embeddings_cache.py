@@ -601,13 +601,11 @@ def get_unique_embedder_configs_for_retrieval_configs(
 
     Args:
         retrieval_config_names: List of retrieval config names (e.g., ["classic_rag_qwen", "classic_rag_openai"])
-        retrieval_config_kwargs: Optional kwargs (e.g. dense_embedding_type for ``AllTools``).
+        retrieval_config_kwargs: Optional kwargs for retrieval configs.
 
     Returns:
         List of unique (embedder_type, embedder_params) tuples
     """
-    retrieval_config_kwargs = retrieval_config_kwargs or {}
-
     CONFIG_EMBEDDERS = {
         "qwen_embeddings_grep": ("openrouter", {"model": "qwen3-embedding-8b"}),
         "qwen_embeddings_reranker_grep": (
@@ -623,31 +621,15 @@ def get_unique_embedder_configs_for_retrieval_configs(
         ),
         "openai_embeddings": ("openai", {"model": "text-embedding-3-large"}),
         "openai_embeddings_reranker": ("openai", {"model": "text-embedding-3-large"}),
+        "alltools": ("openai", {"model": "text-embedding-3-large"}),
+        "AllTools": ("openai", {"model": "text-embedding-3-large"}),
+        "alltools_qwen": ("openrouter", {"model": "qwen3-embedding-8b"}),
     }
 
     seen = set()
     unique_configs = []
 
     for config_name in retrieval_config_names:
-        if config_name == "AllTools":
-            from tau2.domains.banking_knowledge.retrieval import (
-                DEFAULT_DENSE_EMBEDDING_TYPE,
-                map_dense_embedding_cli_to_pipeline,
-            )
-
-            det = (
-                retrieval_config_kwargs.get("dense_embedding_type")
-                or DEFAULT_DENSE_EMBEDDING_TYPE
-            )
-            dem = retrieval_config_kwargs.get("dense_embedding_model")
-            embedder_type, model = map_dense_embedding_cli_to_pipeline(det, dem)
-            config = (embedder_type, {"model": model})
-            key = (config[0], json.dumps(config[1], sort_keys=True))
-            if key not in seen:
-                seen.add(key)
-                unique_configs.append(config)
-            continue
-
         if config_name in CONFIG_EMBEDDERS:
             config = CONFIG_EMBEDDERS[config_name]
             key = (config[0], json.dumps(config[1], sort_keys=True))

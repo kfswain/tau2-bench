@@ -94,6 +94,8 @@ Common `retrieval_config` values:
 
 | Config | Description |
 |--------|-------------|
+| `alltools` | BM25 + OpenAI dense retrieval + shell access |
+| `alltools_qwen` | BM25 + Qwen dense retrieval via OpenRouter + shell access |
 | `terminal_use` | Agent navigates the knowledge base via shell commands (grep, cat, find, etc.) |
 | `openai_embeddings` | Dense retrieval using OpenAI's text-embedding-3-large model |
 | `qwen_embeddings` | Dense retrieval using Qwen3-Embedding model |

@@ -56,71 +56,33 @@ PROMPTS_DIR = DATA_DIR / "tau2" / "domains" / "banking_knowledge" / "prompts"
 COMPONENTS_DIR = PROMPTS_DIR / "components"
 
 # Default variant used when no explicit retrieval_variant is provided.
-DEFAULT_RETRIEVAL_VARIANT = "AllTools"
+DEFAULT_RETRIEVAL_VARIANT = "alltools"
 
-# User-facing dense embedding providers (CLI); map to internal embedder_type keys.
-DENSE_EMBEDDING_OPENAI_API = "openai_api"
-DENSE_EMBEDDING_OPENROUTER = "openrouter"
-DEFAULT_DENSE_EMBEDDING_TYPE = DENSE_EMBEDDING_OPENAI_API
 DEFAULT_DENSE_EMBEDDING_MODEL_OPENAI = "text-embedding-3-large"
 DEFAULT_DENSE_EMBEDDING_MODEL_OPENROUTER = "qwen3-embedding-8b"
 
 
-def map_dense_embedding_cli_to_pipeline(
-    dense_embedding_type: str,
-    dense_embedding_model: Optional[str],
-) -> tuple[str, str]:
-    """Map CLI dense embedding type to (embedder_type, model).
-
-    ``embedder_type`` is passed to the embedding pipeline (``openai`` / ``openrouter``).
-    """
-    if dense_embedding_type == DENSE_EMBEDDING_OPENAI_API:
-        return (
-            "openai",
-            dense_embedding_model or DEFAULT_DENSE_EMBEDDING_MODEL_OPENAI,
-        )
-    if dense_embedding_type == DENSE_EMBEDDING_OPENROUTER:
-        return (
-            "openrouter",
-            dense_embedding_model or DEFAULT_DENSE_EMBEDDING_MODEL_OPENROUTER,
-        )
-    raise ValueError(
-        f"Unknown dense_embedding_type: {dense_embedding_type!r}. "
-        f"Expected {DENSE_EMBEDDING_OPENAI_API!r} or {DENSE_EMBEDDING_OPENROUTER!r}."
-    )
-
-
-def format_all_tools_dense_instructions(
-    dense_embedding_type: str,
-    dense_embedding_model: Optional[str],
-) -> str:
+def format_all_tools_dense_instructions(variant: "RetrievalVariant") -> str:
     """Markdown snippet describing the dense retrieval backend for the AllTools prompt."""
-    _embedder_type, model = map_dense_embedding_cli_to_pipeline(
-        dense_embedding_type, dense_embedding_model
-    )
-    if dense_embedding_type == DENSE_EMBEDDING_OPENAI_API:
+    if variant.kb_search_dense is None:
+        return ""
+
+    embedder_type = variant.kb_search_dense.embedder_type
+    model = variant.kb_search_dense.embedder_model
+    if embedder_type == "openai":
         provider = "OpenAI API"
-    else:
+        model = model or DEFAULT_DENSE_EMBEDDING_MODEL_OPENAI
+    elif embedder_type == "openrouter":
         provider = "OpenRouter"
+        model = model or DEFAULT_DENSE_EMBEDDING_MODEL_OPENROUTER
+    else:
+        provider = embedder_type or "the configured embedding provider"
+        model = model or "the configured embedding model"
+
     return (
         f"The `KB_search_dense` tool uses **{provider}** with embedding model "
         f"`{model}` for dense retrieval."
     )
-
-
-def apply_all_tools_dense_pipeline_spec(
-    variant: "RetrievalVariant",
-    dense_embedding_type: str,
-    dense_embedding_model: Optional[str],
-) -> None:
-    """Mutate ``variant.kb_search_dense`` embedder fields for the AllTools configuration."""
-    if variant.kb_search_dense is None:
-        return
-    embedder_type, model = map_dense_embedding_cli_to_pipeline(
-        dense_embedding_type, dense_embedding_model
-    )
-    variant.kb_search_dense.embedder_type = embedder_type
-    variant.kb_search_dense.embedder_model = model
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +405,28 @@ class RetrievalVariant:
     supports_top_k: bool = False
 
 
+def all_tools_variant(
+    name: str,
+    *,
+    embedder_type: str,
+    embedder_model: str,
+) -> RetrievalVariant:
+    """Create an AllTools variant with a concrete dense embedding backend."""
+    return RetrievalVariant(
+        name=name,
+        prompt_template=PROMPTS_DIR / "all_tools.md",
+        build_prompt=standard_prompt,
+        kb_search_bm25=PipelineSpec(type="bm25"),
+        kb_search_dense=PipelineSpec(
+            type="embedding",
+            embedder_type=embedder_type,
+            embedder_model=embedder_model,
+        ),
+        shell=ShellSpec(allow_writes=False),
+        supports_top_k=False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Variant registry
 # ---------------------------------------------------------------------------
@@ -608,19 +592,20 @@ RETRIEVAL_VARIANTS: Dict[str, RetrievalVariant] = {
         build_prompt=standard_prompt,
         shell=ShellSpec(allow_writes=True),
     ),
-    "AllTools": RetrievalVariant(
-        name="AllTools",
-        prompt_template=PROMPTS_DIR / "all_tools.md",
-        build_prompt=standard_prompt,
-        kb_search_bm25=PipelineSpec(type="bm25"),
-        kb_search_dense=PipelineSpec(
-            type="embedding",
-            embedder_type="openai",
-            embedder_model=DEFAULT_DENSE_EMBEDDING_MODEL_OPENAI,
-        ),
-        shell=ShellSpec(allow_writes=False),
-        supports_top_k=False,
+    "alltools": all_tools_variant(
+        "alltools",
+        embedder_type="openai",
+        embedder_model=DEFAULT_DENSE_EMBEDDING_MODEL_OPENAI,
     ),
+    "alltools_qwen": all_tools_variant(
+        "alltools_qwen",
+        embedder_type="openrouter",
+        embedder_model=DEFAULT_DENSE_EMBEDDING_MODEL_OPENROUTER,
+    ),
+}
+
+RETRIEVAL_VARIANT_ALIASES = {
+    "AllTools": "alltools",
 }
 
 
@@ -648,12 +633,7 @@ def get_info_policy_override(
     variant = resolve_variant(variant_name or DEFAULT_RETRIEVAL_VARIANT, **kwargs)
     if variant.name == "golden_retrieval":
         return "(Policy is task-specific - see 'policy' field in each simulation)"
-    return build_policy(
-        variant,
-        knowledge_base,
-        dense_embedding_type=kwargs.get("dense_embedding_type"),
-        dense_embedding_model=kwargs.get("dense_embedding_model"),
-    )
+    return build_policy(variant, knowledge_base)
 
 
 def resolve_variant(
@@ -672,14 +652,15 @@ def resolve_variant(
     Raises:
         ValueError: If the variant name is not found.
     """
-    if name not in RETRIEVAL_VARIANTS:
+    canonical_name = RETRIEVAL_VARIANT_ALIASES.get(name, name)
+    if canonical_name not in RETRIEVAL_VARIANTS:
         available = sorted(RETRIEVAL_VARIANTS.keys())
         raise ValueError(f"Unknown retrieval variant: {name!r}. Available: {available}")
 
     # Shallow-copy the registered variant so overrides don't mutate the registry.
     import copy
 
-    variant = copy.deepcopy(RETRIEVAL_VARIANTS[name])
+    variant = copy.deepcopy(RETRIEVAL_VARIANTS[canonical_name])
 
     # Apply optional overrides to pipeline specs.
     if top_k is not None and variant.kb_search is not None:
@@ -812,9 +793,6 @@ def build_policy(
     variant: RetrievalVariant,
     knowledge_base: KnowledgeBase,
     task: Optional["Task"] = None,
-    *,
-    dense_embedding_type: Optional[str] = None,
-    dense_embedding_model: Optional[str] = None,
 ) -> str:
     """Build the agent system prompt for a retrieval variant.
 
@@ -823,11 +801,8 @@ def build_policy(
     """
     policy = variant.build_prompt(variant.prompt_template, knowledge_base, task)
 
-    if variant.name == "AllTools":
-        dense_block = format_all_tools_dense_instructions(
-            dense_embedding_type or DEFAULT_DENSE_EMBEDDING_TYPE,
-            dense_embedding_model,
-        )
+    if variant.kb_search_bm25 is not None and variant.kb_search_dense is not None:
+        dense_block = format_all_tools_dense_instructions(variant)
         policy = policy.replace("{{all_tools_dense_instructions}}", dense_block)
 
     if not policy or not policy.strip():

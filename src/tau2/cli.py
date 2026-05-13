@@ -377,10 +377,10 @@ def add_run_args(parser):
         help=(
             "Knowledge retrieval config name (banking_knowledge domain). "
             "Offline: no_knowledge, full_kb, golden_retrieval, bm25, bm25_grep, grep_only. "
-            "Requires OPENAI_API_KEY: openai_embeddings*. "
-            "Requires OPENROUTER_API_KEY: qwen_embeddings*. "
-            "Requires sandbox-runtime: terminal_use*, AllTools. "
-            "Default for banking_knowledge: AllTools (BM25 + dense + shell)."
+            "Requires OPENAI_API_KEY: openai_embeddings*, alltools. "
+            "Requires OPENROUTER_API_KEY: qwen_embeddings*, alltools_qwen. "
+            "Requires sandbox-runtime: terminal_use*, alltools*. "
+            "Default for banking_knowledge: alltools (BM25 + dense + shell)."
         ),
     )
     parser.add_argument(
@@ -388,25 +388,6 @@ def add_run_args(parser):
         type=json.loads,
         default=None,
         help="Arguments to pass to the retrieval config constructor as JSON (e.g., '{\"top_k\": 10}').",
-    )
-    parser.add_argument(
-        "--dense-embedding-type",
-        type=str,
-        default=None,
-        choices=("openai_api", "openrouter"),
-        help=(
-            "Dense embedding backend for banking_knowledge AllTools (default: openai_api). "
-            "Maps to OpenAI API or OpenRouter embeddings."
-        ),
-    )
-    parser.add_argument(
-        "--dense-embedding-model",
-        type=str,
-        default=None,
-        help=(
-            "Embedding model for AllTools dense search (default: text-embedding-3-large for "
-            "openai_api, qwen3-embedding-8b for openrouter)."
-        ),
     )
 
     # Resume mode
@@ -670,8 +651,6 @@ def main():
             hallucination_retries=args.hallucination_retries,
             retrieval_config=args.retrieval_config,
             retrieval_config_kwargs=args.retrieval_config_kwargs,
-            dense_embedding_type=args.dense_embedding_type,
-            dense_embedding_model=args.dense_embedding_model,
         )
 
         if audio_native_config is not None:

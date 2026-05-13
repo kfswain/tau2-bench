@@ -453,49 +453,14 @@ class BaseRunConfig(BaseModel):
             default=None,
         ),
     ]
-    dense_embedding_type: Annotated[
-        Optional[str],
-        Field(
-            description=(
-                "Dense embedding backend for banking_knowledge AllTools: "
-                "'openai_api' or 'openrouter'."
-            ),
-            default=None,
-        ),
-    ]
-    dense_embedding_model: Annotated[
-        Optional[str],
-        Field(
-            description=(
-                "Embedding model id for AllTools dense search "
-                "(see --dense-embedding-model)."
-            ),
-            default=None,
-        ),
-    ]
 
     # ---- Abstract-ish properties (subclasses must override) ----
 
     @model_validator(mode="after")
-    def _default_banking_retrieval_and_dense_kwargs(self) -> "BaseRunConfig":
-        """Default retrieval_config to AllTools for banking_knowledge; merge dense CLI into kwargs."""
-        if self.domain != "banking_knowledge":
-            return self
-
-        eff_retrieval = self.retrieval_config
-        if eff_retrieval is None:
-            object.__setattr__(self, "retrieval_config", "AllTools")
-            eff_retrieval = "AllTools"
-
-        if eff_retrieval == "AllTools":
-            merged = dict(self.retrieval_config_kwargs or {})
-            if self.dense_embedding_type is not None:
-                merged["dense_embedding_type"] = self.dense_embedding_type
-            if self.dense_embedding_model is not None:
-                merged["dense_embedding_model"] = self.dense_embedding_model
-            if merged:
-                object.__setattr__(self, "retrieval_config_kwargs", merged)
-
+    def _default_banking_retrieval_config(self) -> "BaseRunConfig":
+        """Default retrieval_config to alltools for banking_knowledge."""
+        if self.domain == "banking_knowledge" and self.retrieval_config is None:
+            object.__setattr__(self, "retrieval_config", "alltools")
         return self
 
     @property

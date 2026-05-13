@@ -176,12 +176,6 @@ def get_info(config: RunConfig, **overrides) -> Info:
     if getattr(config, "retrieval_config", None) is not None:
         info_env_kwargs["retrieval_variant"] = config.retrieval_config
         rk = dict(getattr(config, "retrieval_config_kwargs", None) or {})
-        det = getattr(config, "dense_embedding_type", None)
-        dem = getattr(config, "dense_embedding_model", None)
-        if det is not None:
-            rk["dense_embedding_type"] = det
-        if dem is not None:
-            rk["dense_embedding_model"] = dem
         if rk:
             info_env_kwargs["retrieval_kwargs"] = rk
 

@@ -7,9 +7,7 @@ from typing import Optional
 from tau2.data_model.tasks import Task
 from tau2.domains.banking_knowledge.data_model import KnowledgeBase, TransactionalDB
 from tau2.domains.banking_knowledge.retrieval import (
-    DEFAULT_DENSE_EMBEDDING_TYPE,
     DEFAULT_RETRIEVAL_VARIANT,
-    apply_all_tools_dense_pipeline_spec,
     build_policy,
     build_tools,
     resolve_variant,
@@ -73,22 +71,9 @@ def get_environment(
     kwargs = retrieval_kwargs or {}
     variant = resolve_variant(variant_name, **kwargs)
 
-    if variant.name == "AllTools":
-        apply_all_tools_dense_pipeline_spec(
-            variant,
-            kwargs.get("dense_embedding_type") or DEFAULT_DENSE_EMBEDDING_TYPE,
-            kwargs.get("dense_embedding_model"),
-        )
-
     tools = build_tools(variant, db, knowledge_base)
     user_tools = KnowledgeUserTools(db)
-    policy = build_policy(
-        variant,
-        knowledge_base,
-        task,
-        dense_embedding_type=kwargs.get("dense_embedding_type"),
-        dense_embedding_model=kwargs.get("dense_embedding_model"),
-    )
+    policy = build_policy(variant, knowledge_base, task)
 
     return Environment(
         domain_name="banking_knowledge",

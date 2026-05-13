@@ -6,20 +6,20 @@ Domains with a knowledge base (currently just `banking_knowledge`) use a `--retr
 tau2 run --domain banking_knowledge --retrieval-config <config_name> --agent-llm gpt-4.1 --user-llm gpt-4.1
 ```
 
-If `--retrieval-config` is omitted for `banking_knowledge`, the default is **`AllTools`**: BM25 search, dense embedding search, and read-only shell (see below). Choose an offline-only config such as **`bm25`** if you want no API keys or sandbox.
+If `--retrieval-config` is omitted for `banking_knowledge`, the default is **`alltools`**: BM25 search, dense embedding search, and read-only shell (see below). Choose an offline-only config such as **`bm25`** if you want no API keys or sandbox.
 
-### AllTools (`AllTools`)
+### AllTools (`alltools`, `alltools_qwen`)
 
 | Tool | Role |
 |------|------|
 | `KB_search_bm25` | BM25 sparse retrieval; pass **`k`** (default 10) for result count |
-| `KB_search_dense` | Dense embeddings; pass **`k`** (default 10); backend set via CLI |
+| `KB_search_dense` | Dense embeddings; pass **`k`** (default 10); backend selected by retrieval config |
 | `shell` | Same read-only sandboxed shell as `terminal_use` |
 
 Requirements: **sandbox-runtime** for `shell`, and an embedding API for dense search:
 
-- **`--dense-embedding-type openai_api`** (default): uses OpenAI embeddings — set **`OPENAI_API_KEY`**. Default model: **`text-embedding-3-large`** (override with **`--dense-embedding-model`**).
-- **`--dense-embedding-type openrouter`**: uses OpenRouter — set **`OPENROUTER_API_KEY`**. Default model: **`qwen3-embedding-8b`** (override with **`--dense-embedding-model`**).
+- **`--retrieval-config alltools`** (default): uses OpenAI embeddings — set **`OPENAI_API_KEY`**. Model: **`text-embedding-3-large`**.
+- **`--retrieval-config alltools_qwen`**: uses OpenRouter — set **`OPENROUTER_API_KEY`**. Model: **`qwen3-embedding-8b`**.
 
 ## Retrieval Configs
 
@@ -34,7 +34,8 @@ Requirements: **sandbox-runtime** for `shell`, and an embedding API for dense se
 | `qwen_embeddings` | `KB_search` | `OPENROUTER_API_KEY` |
 | `terminal_use` | `shell` | `sandbox-runtime` (see below) |
 | `terminal_use_write` | `shell` | `sandbox-runtime` (see below) |
-| `AllTools` | `KB_search_bm25`, `KB_search_dense`, `shell` | BM25 offline + see AllTools section above |
+| `alltools` | `KB_search_bm25`, `KB_search_dense`, `shell` | BM25 offline + OpenAI embeddings + sandbox-runtime |
+| `alltools_qwen` | `KB_search_bm25`, `KB_search_dense`, `shell` | BM25 offline + OpenRouter embeddings + sandbox-runtime |
 
 The `bm25`, `openai_embeddings`, and `qwen_embeddings` configs can also be combined with:
 - `_reranker` suffix — adds an LLM reranker postprocessor (requires `OPENAI_API_KEY`)
@@ -45,17 +46,17 @@ Note: `*_reranker` variants always require `OPENAI_API_KEY` for the pointwise LL
 
 ## Embedding Cache
 
-Embedding-based configs (`openai_embeddings*`, `qwen_embeddings*`) cache document embeddings on disk at `data/.embeddings_cache` (gitignored). This avoids re-computing embeddings on repeated runs. The cache is automatically invalidated when document content changes.
+Embedding-based configs (`openai_embeddings*`, `qwen_embeddings*`, `alltools*`) cache document embeddings on disk at `data/.embeddings_cache` (gitignored). This avoids re-computing embeddings on repeated runs. The cache is automatically invalidated when document content changes.
 
 ## Additional Setup
 
 ### OpenRouter API Key
 
-The `qwen_embeddings*` configs route through [OpenRouter](https://openrouter.ai/). Set the `OPENROUTER_API_KEY` environment variable (or add it to your `.env` file — see `.env.example`).
+The `qwen_embeddings*` and `alltools_qwen` configs route through [OpenRouter](https://openrouter.ai/). Set the `OPENROUTER_API_KEY` environment variable (or add it to your `.env` file — see `.env.example`).
 
 ### sandbox-runtime
 
-The `terminal_use`, `terminal_use_write`, and `AllTools` configs require [Anthropic's sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime) for secure filesystem isolation. **All of the following are required** — installing just the npm package is not sufficient.
+The `terminal_use`, `terminal_use_write`, and `alltools*` configs require [Anthropic's sandbox-runtime](https://github.com/anthropic-experimental/sandbox-runtime) for secure filesystem isolation. **All of the following are required** — installing just the npm package is not sufficient.
 
 ```bash
 npm install -g @anthropic-ai/sandbox-runtime@0.0.23
