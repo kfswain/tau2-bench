@@ -838,9 +838,12 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         )
         # AGENT/ENV -> USER
         if self.from_role in [Role.AGENT, Role.ENV] and self.to_role == Role.USER:
+            initial = time.time()
             user_msg, self.user_state = self.user.generate_next_message(
                 self.message, self.user_state
             )
+            final = time.time()
+            print("Kellen- User message generation time: ", final - initial)
             user_msg.validate()
             if UserSimulator.is_stop(user_msg):
                 self.done = True
@@ -882,7 +885,10 @@ class Orchestrator(BaseOrchestrator[AgentT, UserT, Message]):
         elif self.from_role in [Role.AGENT, Role.USER] and self.to_role == Role.ENV:
             if not self.message.is_tool_call():
                 raise ValueError("Agent or User should send tool call to environment")
+            initial = time.time()
             tool_results = self._execute_tool_calls(self.message.tool_calls)
+            final = time.time()
+            print("Kellen- Tool execution time: ", final - initial)
             assert len(self.message.tool_calls) == len(tool_results), (
                 "Number of tool calls and tool messages should be the same"
             )

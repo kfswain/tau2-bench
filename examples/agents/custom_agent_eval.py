@@ -14,6 +14,7 @@ Usage:
 """
 
 from typing import Optional
+import time
 
 from tau2.agent.base_agent import HalfDuplexAgent
 from tau2.data_model.message import (
@@ -42,7 +43,7 @@ class VerboseAgent(HalfDuplexAgent[list]):
         self,
         tools: list[Tool],
         domain_policy: str,
-        llm: str = "openai/gpt-4.1-mini",
+        llm: str = "qwen-32b",
         llm_args: Optional[dict] = None,
     ):
         super().__init__(tools=tools, domain_policy=domain_policy)
@@ -50,6 +51,7 @@ class VerboseAgent(HalfDuplexAgent[list]):
         self.llm_args = llm_args or {}
         self.call_count = 0
         self._system_messages: list[SystemMessage] = []
+        self.total_time = 0.0
 
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
@@ -78,14 +80,18 @@ class VerboseAgent(HalfDuplexAgent[list]):
             f"  [VerboseAgent] Turn {self.call_count}: received '{str(message.content)[:80]}...'"
         )
 
+        start_time = time.time()
         response = generate(
             model=self.llm,
             tools=self.tools,
             messages=self._system_messages + state,
             **self.llm_args,
         )
+        end_time = time.time()
+        self.total_time += end_time - start_time
 
         # Log what the agent decided to do
+        print(f"  [VerboseAgent] -> Generated response (raw): '{response}...'")
         if response.tool_calls:
             tool_names = [tc.name for tc in response.tool_calls]
             print(f"  [VerboseAgent] -> Calling tools: {tool_names}")
@@ -102,89 +108,53 @@ class VerboseAgent(HalfDuplexAgent[list]):
 # Build and run manually (no registry needed)
 # =============================================================================
 
+from tau2.data_model.simulation import TextRunConfig
+from tau2.registry import registry
+from tau2.runner import get_tasks, run_tasks
+# ... [VerboseAgent class definition remains unchanged] ...
+# 1. Define an agent factory function and register it
+def create_custom_agent(tools, domain_policy, llm, llm_args, **kwargs):
+    return VerboseAgent(
+        tools=tools,
+        domain_policy=domain_policy,
+        llm=llm,
+        llm_args=llm_args,
+    )
+registry.register_agent_factory(create_custom_agent, "custom_verbose_agent")
 if __name__ == "__main__":
-    from tau2.evaluator.evaluator import EvaluationType
-    from tau2.orchestrator.orchestrator import Orchestrator
-    from tau2.runner import (
-        build_environment,
-        build_user,
-        get_tasks,
-        run_simulation,
+    # Load airline domain tasks
+    # 14 samples * 10 trials = 140 total requests
+    start = 49
+    stop = 35
+    step = -1
+    tasks = get_tasks("airline", task_ids=[str(i) for i in range(start, stop, step)])
+
+    # 2. Initialize the run configuration specifying concurrency settings
+    config = TextRunConfig(
+        domain="airline",
+        agent="custom_verbose_agent",
+        user="user_simulator",
+        llm_agent="qwen-32b",
+        llm_args_agent={
+            "api_base": "http://localhost:8000/v1",
+            "api_key": "none",
+            "custom_llm_provider": "hosted_vllm"
+        },
+        llm_user="gemini-3.5-flash",
+        llm_args_user={
+            "api_key": "your key here",
+            "custom_llm_provider": "gemini"
+        },
+        max_concurrency=1000,  # Controls active worker thread limit
+        num_trials=10,
+        verbose_logs=True,
     )
-
-    # Load a task from the mock domain
-    tasks = get_tasks("mock", task_ids=["create_task_1"])
-    task = tasks[0]
-    print(f"Task: {task.id}")
-    print(f"User scenario: {task.user_scenario.instructions[:100]}...")
-    print()
-
-    # Build the environment
-    env = build_environment("mock")
-    print(f"Domain policy: {env.get_policy()[:100]}...")
-    print(f"Available tools: {[t.name for t in env.get_tools()]}")
-    print()
-
-    # Build our custom agent (no registry involved)
-    agent = VerboseAgent(
-        tools=env.get_tools(),
-        domain_policy=env.get_policy(),
-        llm="openai/gpt-4.1-mini",
-    )
-
-    # Build the user simulator (from the registry, since we're not customizing it)
-    user = build_user(
-        "user_simulator",
-        env,
-        task,
-        llm="openai/gpt-4.1-mini",
-    )
-
-    # Wire into an orchestrator
-    orchestrator = Orchestrator(
-        domain="mock",
-        agent=agent,
-        user=user,
-        environment=env,
-        task=task,
-        max_steps=20,
-        max_errors=5,
-        seed=42,
-    )
-
-    # Run the simulation
-    print("=" * 60)
-    print("Running simulation...")
-    print("=" * 60)
-    result = run_simulation(orchestrator, evaluation_type=EvaluationType.ALL)
-
-    # Inspect the results
-    print()
-    print("=" * 60)
-    print("Results")
-    print("=" * 60)
-    print(f"Reward: {result.reward_info.reward}")
-    print(f"Total messages: {len(result.messages)}")
-    print(f"Agent calls: {agent.call_count}")
-
-    # Print the conversation
-    print()
-    print("Conversation:")
-    for i, msg in enumerate(result.messages):
-        role = msg.role.value if hasattr(msg.role, "value") else msg.role
-        content = str(msg.content)[:120] if msg.content else "(tool call/result)"
-        print(f"  [{role}] {content}")
-
-    # Print evaluation details
-    if result.reward_info:
-        print()
-        print("Evaluation:")
-        print(f"  Reward: {result.reward_info.reward}")
-        if result.reward_info.db_check:
-            print(f"  DB check: {result.reward_info.db_check}")
-        if result.reward_info.action_checks:
-            for check in result.reward_info.action_checks:
-                print(f"  Action check: {check}")
-        if result.reward_info.env_assertions:
-            for assertion in result.reward_info.env_assertions:
-                print(f"  Env assertion: {assertion}")
+    # 3. Run via the native framework execution layer
+    
+    start = time.time()
+    results = run_tasks(config, tasks)
+    end = time.time()
+    print(f"Total execution time: {end - start:.2f} seconds")
+    print("Final aggregated results:")
+    print(results)
+    # The native runner handles console reporting and persistence automatically.

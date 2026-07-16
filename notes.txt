@@ -1,0 +1,21 @@
+
+new cluster with just RR: 
+745.64 seconds
+712.31 seconds
+602.58 seconds
+
+increased threadpool worker count:
+424.04 seconds
+
+removed max_token count:
+409.65 seconds
+
+adding prefix cache: 
+377.86 seconds
+400.21 seconds
+485.86 seconds
+
+back to RR:
+404.63 seconds
+428.85 seconds
+938.82 seconds
